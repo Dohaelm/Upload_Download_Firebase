@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,28 +9,53 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Cloud, Lock, Mail } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { auth } from "@/lib/firebase"
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"
+import { useRouter } from "next/navigation"
 
-interface AuthPageProps {
-  onAuthSuccess: () => void
-}
-
-export function AuthPage({ onAuthSuccess }: AuthPageProps) {
+export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
+  const router = useRouter()
+
+
+  const [loginEmail, setLoginEmail] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [signupEmail, setSignupEmail] = useState("")
+  const [signupPassword, setSignupPassword] = useState("")
 
   const handleAuth = async (e: React.FormEvent<HTMLFormElement>, type: "login" | "signup") => {
     e.preventDefault()
     setIsLoading(true)
 
-    // Simulate Firebase authentication
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      if (type === "signup") {
+        await createUserWithEmailAndPassword(auth, signupEmail, signupPassword)
+        toast({
+          title: "Inscription réussie",
+          description: "Bienvenue sur CloudFiles",
+        })
+      } else {
+        console.log("Tentative de connexion avec:", loginEmail) 
+        const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword)
+        console.log("Connexion réussie:", userCredential.user)
+        
+        toast({
+          title: "Connexion réussie",
+          description: "Bienvenue sur CloudFiles",
+        })
+        router.refresh()
+      }
+    } catch (error: any) {
+      console.error("Erreur d'authentification:", error) 
       toast({
-        title: type === "login" ? "Connexion réussie" : "Inscription réussie",
-        description: "Bienvenue sur CloudFiles",
+        title: "Erreur",
+        description: error.message,
+        variant: "destructive",
       })
-      onAuthSuccess()
-    }, 1500)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -57,7 +81,6 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
           </div>
         </div>
 
-        {/* Auth Tabs */}
         <Card className="border-border/50 bg-card/50 backdrop-blur">
           <CardHeader>
             <CardTitle>Bienvenue</CardTitle>
@@ -76,14 +99,30 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     <Label htmlFor="login-email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-cyan" />
-                      <Input id="login-email" type="email" placeholder="vous@exemple.com" className="pl-10" required />
+                      <Input
+                        id="login-email"
+                        type="email"
+                        placeholder="vous@exemple.com"
+                        className="pl-10"
+                        required
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Mot de passe</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-purple" />
-                      <Input id="login-password" type="password" placeholder="••••••••" className="pl-10" required />
+                      <Input
+                        id="login-password"
+                        type="password"
+                        placeholder="••••••••"
+                        className="pl-10"
+                        required
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                      />
                     </div>
                   </div>
                   <Button type="submit" className="w-full gradient-cyan-purple hover:opacity-90" disabled={isLoading}>
@@ -98,14 +137,30 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     <Label htmlFor="signup-email">Email</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-cyan" />
-                      <Input id="signup-email" type="email" placeholder="vous@exemple.com" className="pl-10" required />
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder="vous@exemple.com"
+                        className="pl-10"
+                        required
+                        value={signupEmail}
+                        onChange={(e) => setSignupEmail(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Mot de passe</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-3 h-4 w-4 text-purple" />
-                      <Input id="signup-password" type="password" placeholder="••••••••" className="pl-10" required />
+                      <Input
+                        id="signup-password"
+                        type="password"
+                        placeholder="••••••••"
+                        className="pl-10"
+                        required
+                        value={signupPassword}
+                        onChange={(e) => setSignupPassword(e.target.value)}
+                      />
                     </div>
                   </div>
                   <Button type="submit" className="w-full gradient-purple-pink hover:opacity-90" disabled={isLoading}>
@@ -117,7 +172,6 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
           </CardContent>
         </Card>
 
-        {/* Footer */}
         <p className="text-center text-sm text-muted-foreground">Stockage sécurisé avec Firebase</p>
       </div>
     </div>
