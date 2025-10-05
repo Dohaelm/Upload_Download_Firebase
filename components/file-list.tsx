@@ -4,13 +4,14 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { FileItem } from "@/components/dashboard"
+import type { FileMetadata } from "@/services/firestoreFiles"
+
 import { Download, Trash2, Link2, Search, FileText, ImageIcon, File } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface FileListProps {
-  files: FileItem[]
-  onFileClick: (file: FileItem) => void
+  files: FileMetadata[]
+  onFileClick: (file: FileMetadata) => void
   onDeleteFile: (id: string) => void
 }
 
@@ -54,7 +55,7 @@ export function FileList({ files, onFileClick, onDeleteFile }: FileListProps) {
     )
   }
 
-  const handleCopyLink = (file: FileItem) => {
+  const handleCopyLink = (file: FileMetadata) => {
     navigator.clipboard.writeText(file.url)
     toast({
       title: "Lien copié",
@@ -62,10 +63,19 @@ export function FileList({ files, onFileClick, onDeleteFile }: FileListProps) {
     })
   }
 
-  const handleDownload = (file: FileItem) => {
+  const handleDownload = (file: FileMetadata) => {
+    const link = document.createElement("a")
+    link.href = file.url
+    link.download = file.name
+    link.target = "_blank"
+    link.rel = "noopener noreferrer"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
     toast({
       title: "Téléchargement",
-      description: `Téléchargement de ${file.name}...`,
+      description: `${file.name} est en cours de téléchargement...`,
     })
   }
 
@@ -114,7 +124,7 @@ export function FileList({ files, onFileClick, onDeleteFile }: FileListProps) {
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{formatFileSize(file.size)}</span>
                     <span>•</span>
-                    <span>{formatDate(file.uploadDate)}</span>
+                    <span>{formatDate(file.uploadDate || new Date())}</span>
                   </div>
                 </div>
 
@@ -147,7 +157,7 @@ export function FileList({ files, onFileClick, onDeleteFile }: FileListProps) {
                     className="hover:bg-orange/10 hover:text-orange"
                     onClick={(e) => {
                       e.stopPropagation()
-                      onDeleteFile(file.id)
+                      onDeleteFile(file.id!)
                     }}
                   >
                     <Trash2 className="h-4 w-4" />

@@ -1,37 +1,107 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Upload, File } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useUploadThing } from "@/lib/uploadthing"
+import { addFileMetadata, type FileMetadata } from "@/services/firestoreFiles"
 
 interface FileUploadProps {
-  onFileUpload: (file: File) => void
+  onFileUpload: (file: FileMetadata) => void
 }
 
 export function FileUpload({ onFileUpload }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (uploadProgress === 100 && pendingFile) {
-      onFileUpload(pendingFile)
-      toast({
-        title: "Fichier uploadé",
-        description: `${pendingFile.name} a été uploadé avec succès`,
-      })
-      setPendingFile(null)
+  const { startUpload } = useUploadThing("fileUploader", {
+    onClientUploadComplete: async (res) => {
+      if (!res || res.length === 0) {
+        setIsUploading(false)
+        setUploadProgress(0)
+        return
+      }
+
+      // Process each uploaded file
+      for (const uploadedFile of res) {
+        try {
+          console.log("Uploaded file from UploadThing:", uploadedFile)
+
+          // Save metadata to Firestore
+          const fileMetadata = {
+            name: uploadedFile.name,
+            size: uploadedFile.size,
+            type: uploadedFile.type || "application/octet-stream",
+            url: uploadedFile.url,
+          }
+
+          console.log("Saving to Firestore:", fileMetadata)
+          const docId = await addFileMetadata(fileMetadata)
+          console.log("Firestore doc ID:", docId)
+
+          // Call parent callback with complete metadata including Firestore ID
+          const completeFile: FileMetadata = {
+            id: docId,
+            name: uploadedFile.name,
+            size: uploadedFile.size,
+            type: uploadedFile.type || "application/octet-stream",
+            url: uploadedFile.url,
+            uploadDate: new Date(),
+          }
+
+          console.log("Calling onFileUpload with:", completeFile)
+          onFileUpload(completeFile)
+
+          toast({
+            title: "Fichier uploadé",
+            description: `${uploadedFile.name} a été uploadé avec succès`,
+          })
+        } catch (error: any) {
+          console.error("Firestore error:", error)
+          toast({
+            title: "Erreur",
+            description: `Impossible d'enregistrer les métadonnées: ${error.message}`,
+            
+          })
+        }
+      }
+
       setIsUploading(false)
       setUploadProgress(0)
-    }
-  }, [uploadProgress, pendingFile, onFileUpload, toast])
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    },
+    onUploadError: (error: Error) => {
+      console.error("Upload error:", error)
+      toast({
+        title: "Erreur d'upload",
+        description: error.message || "Impossible d'uploader le fichier",
+      
+      })
+      setIsUploading(false)
+      setUploadProgress(0)
+    },
+    onUploadBegin: (fileName: string) => {
+      setIsUploading(true)
+      setUploadProgress(0)
+      toast({
+        title: "Upload démarré",
+        description: `Upload de ${fileName} en cours...`,
+      })
+    },
+    onUploadProgress: (progress: number) => {
+      setUploadProgress(progress)
+    },
+  })
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -58,21 +128,30 @@ export function FileUpload({ onFileUpload }: FileUploadProps) {
     }
   }
 
-  const uploadFile = (file: File) => {
-    setPendingFile(file)
-    setIsUploading(true)
-    setUploadProgress(0)
-
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          return 100
-        }
-        return prev + 10
+  const uploadFile = async (file: File) => {
+    // Validate file size (max 64MB for videos, 16MB for PDFs, 4MB for images)
+    const maxSize = 64 * 1024 * 1024 // 64MB
+    if (file.size > maxSize) {
+      toast({
+        title: "Erreur",
+        description: "Le fichier est trop volumineux (max 64MB)",
+        
       })
-    }, 200)
+      return
+    }
+
+    try {
+      await startUpload([file])
+    } catch (error: any) {
+      console.error("Upload initiation error:", error)
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible d'initialiser l'upload",
+     
+      })
+      setIsUploading(false)
+      setUploadProgress(0)
+    }
   }
 
   return (
@@ -94,9 +173,17 @@ export function FileUpload({ onFileUpload }: FileUploadProps) {
           className={`
             relative rounded-lg border-2 border-dashed p-8 text-center transition-all
             ${isDragging ? "border-cyan bg-cyan/5 scale-[1.02]" : "border-border hover:border-cyan/50"}
+            ${isUploading ? "pointer-events-none opacity-75" : ""}
           `}
         >
-          <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" />
+          <input 
+            ref={fileInputRef} 
+            type="file" 
+            onChange={handleFileSelect} 
+            className="hidden"
+            accept="image/*,.pdf,video/*"
+            disabled={isUploading}
+          />
 
           {!isUploading ? (
             <div className="space-y-4">
@@ -113,9 +200,13 @@ export function FileUpload({ onFileUpload }: FileUploadProps) {
                 onClick={() => fileInputRef.current?.click()}
                 variant="outline"
                 className="w-full border-cyan/50 hover:bg-cyan/10 hover:text-cyan hover:border-cyan"
+                disabled={isUploading}
               >
                 Choisir un fichier
               </Button>
+              <p className="text-xs text-muted-foreground">
+                Images (4MB), PDFs (16MB), Vidéos (64MB)
+              </p>
             </div>
           ) : (
             <div className="space-y-4">

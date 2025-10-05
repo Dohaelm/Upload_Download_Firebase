@@ -1,13 +1,13 @@
 "use client"
 
-import type { FileItem } from "@/components/dashboard"
+import type { FileMetadata } from "@/services/firestoreFiles"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Download, Trash2, Link2, FileText, ImageIcon, File } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface FileDetailsModalProps {
-  file: FileItem
+  file: FileMetadata
   onClose: () => void
   onDelete: () => void
 }
@@ -40,6 +40,15 @@ export function FileDetailsModal({ file, onClose, onDelete }: FileDetailsModalPr
   }
 
   const handleDownload = () => {
+    const link = document.createElement("a")
+    link.href = file.url
+    link.download = file.name
+    link.target = "_blank"
+    link.rel = "noopener noreferrer"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
     toast({
       title: "Téléchargement",
       description: `Téléchargement de ${file.name}...`,
@@ -119,7 +128,7 @@ export function FileDetailsModal({ file, onClose, onDelete }: FileDetailsModalPr
               </div>
               <div className="space-y-1 rounded-lg border border-green/20 bg-green/5 p-3">
                 <p className="text-sm text-green">Date d'upload</p>
-                <p className="font-medium">{formatDate(file.uploadDate)}</p>
+                <p className="font-medium">{formatDate(file.uploadDate || new Date())}</p>
               </div>
             </div>
           </div>

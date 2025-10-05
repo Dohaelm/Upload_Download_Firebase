@@ -5,12 +5,15 @@ import {
   getDocs,
   deleteDoc,
   doc,
-  serverTimestamp,
   query,
-  orderBy,
   where,
+  orderBy,
+  serverTimestamp,
+  Timestamp,
 } from "firebase/firestore"
-import { auth } from "@/lib/firebase"
+import { getAuth } from "firebase/auth"
+import { ref, deleteObject } from "firebase/storage"
+import { storage } from "@/lib/firebase"
 
 export interface FileMetadata {
   id?: string
@@ -19,47 +22,153 @@ export interface FileMetadata {
   type: string
   url: string
   uploadDate?: Date
-  owner?: string
+  userId?: string
 }
 
+interface FirestoreFileData {
+  name: string
+  size: number
+  type: string
+  url: string
+  userId: string
+  createdAt: ReturnType<typeof serverTimestamp>
+}
 
-export async function addFileMetadata(file: FileMetadata) {
+/**
+ * Add file metadata to Firestore
+ */
+export async function addFileMetadata(file: {
+  name: string
+  size: number
+  type: string
+  url: string
+}): Promise<string> {
+  const auth = getAuth()
   const user = auth.currentUser
-  if (!user) throw new Error("Utilisateur non connecté")
 
-  const docRef = await addDoc(collection(db, "files"), {
+  if (!user) {
+    throw new Error("User must be authenticated to upload files")
+  }
+
+  console.log("Adding file metadata for user:", user.uid)
+
+  const fileData: FirestoreFileData = {
     name: file.name,
     size: file.size,
     type: file.type,
     url: file.url,
-    owner: user.uid, 
-    uploadDate: serverTimestamp(),
-  })
+    userId: user.uid,
+    createdAt: serverTimestamp(),
+  }
 
-  return docRef.id
+  try {
+    const docRef = await addDoc(collection(db, "files"), fileData)
+    console.log("File metadata saved with ID:", docRef.id)
+    return docRef.id
+  } catch (error) {
+    console.error("Error adding file metadata:", error)
+    throw error
+  }
 }
 
-
+/**
+ * Get all files for the current user
+ */
 export async function getUserFiles(): Promise<FileMetadata[]> {
+  const auth = getAuth()
   const user = auth.currentUser
-  if (!user) return []
 
-  const q = query(
-    collection(db, "files"),
-    where("owner", "==", user.uid),
-    orderBy("uploadDate", "desc")
-  )
-  
-  const snap = await getDocs(q)
+  console.log("Fetching files for user:", user?.uid)
 
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    uploadDate: d.data().uploadDate?.toDate() || new Date(),
-  })) as FileMetadata[]
+  if (!user) {
+    console.log("No authenticated user, returning empty array")
+    return []
+  }
+
+  try {
+    const filesRef = collection(db, "files")
+    const q = query(
+      filesRef,
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    )
+
+    const querySnapshot = await getDocs(q)
+    console.log("Found documents:", querySnapshot.size)
+    
+    const files: FileMetadata[] = []
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data()
+      console.log("Document data:", { id: doc.id, ...data })
+      
+      files.push({
+        id: doc.id,
+        name: data.name,
+        size: data.size,
+        type: data.type,
+        url: data.url,
+        uploadDate: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date(),
+        userId: data.userId,
+      })
+    })
+
+    console.log("Returning files:", files.length)
+    return files
+  } catch (error) {
+    console.error("Error fetching user files:", error)
+    throw error
+  }
 }
 
-export async function deleteFileMetadata(id: string) {
-  await deleteDoc(doc(db, "files", id))
+/**
+ * Delete file metadata from Firestore
+ */
+export async function deleteFileMetadata(fileId: string): Promise<void> {
+  const auth = getAuth()
+  const user = auth.currentUser
+
+  if (!user) {
+    throw new Error("User must be authenticated to delete files")
+  }
+
+  try {
+    console.log("Deleting file with ID:", fileId)
+    const fileDocRef = doc(db, "files", fileId)
+    await deleteDoc(fileDocRef)
+    console.log("File deleted successfully")
+  } catch (error) {
+    console.error("Error deleting file:", error)
+    throw error
+  }
 }
 
+/**
+ * Helper function to extract storage path from Firebase Storage URL
+ */
+function extractStoragePathFromUrl(url: string): string | null {
+  try {
+    const urlObj = new URL(url)
+    const pathMatch = urlObj.pathname.match(/\/o\/(.+)\?/)
+    if (pathMatch && pathMatch[1]) {
+      return decodeURIComponent(pathMatch[1])
+    }
+    return null
+  } catch (error) {
+    console.error("Error parsing storage URL:", error)
+    return null
+  }
+}
+
+/**
+ * Delete file from Firebase Storage (optional - for UploadThing you may not need this)
+ */
+export async function deleteFileFromStorage(fileUrl: string): Promise<void> {
+  const storagePath = extractStoragePathFromUrl(fileUrl)
+  if (!storagePath) {
+    throw new Error("Invalid storage URL")
+  }
+
+  const storageRef = ref(storage, storagePath)
+  await deleteObject(storageRef)
+}

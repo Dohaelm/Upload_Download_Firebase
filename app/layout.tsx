@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import { Toaster } from "@/components/ui/toaster" // <- Import Toaster instead
 import { AuthProvider } from '@/context/AuthContext' 
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <AuthProvider> 
           {children}
+          <Toaster /> {/* <- Add Toaster component here */}
         </AuthProvider>
         <Analytics />
       </body>

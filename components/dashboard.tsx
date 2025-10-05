@@ -8,11 +8,12 @@ import { FileList } from "@/components/file-list"
 import { FileDetailsModal } from "@/components/file-details-modal"
 
 import {
-  addFileMetadata,
   getUserFiles,
   deleteFileMetadata,
-  FileMetadata,
+  type FileMetadata,
+  addFileMetadata,
 } from "@/services/firestoreFiles"
+import { getAuth, onAuthStateChanged } from "firebase/auth"
 
 interface DashboardProps {
   onLogout: () => void
@@ -21,34 +22,47 @@ interface DashboardProps {
 export function Dashboard({ onLogout }: DashboardProps) {
   const [files, setFiles] = useState<FileMetadata[]>([])
   const [selectedFile, setSelectedFile] = useState<FileMetadata | null>(null)
-
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchFiles = async () => {
-      const data = await getUserFiles()
-      setFiles(data)
-    }
-    fetchFiles()
-  }, [])
-
-
-  const handleFileUpload = async (file: File) => {
-    const newFile = {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      url: URL.createObjectURL(file),
-    }
-
-    const id = await addFileMetadata(newFile)
-    setFiles([{ ...newFile, id, uploadDate: new Date() }, ...files])
+  const fetchFiles = async () => {
+    const data = await getUserFiles()
+    setFiles(data)
   }
+  fetchFiles()
+}, [])
+
+
+   
+const handleFileUpload = async (uploadedFile: any) => {
+  const fileUrl = uploadedFile.ufsUrl || uploadedFile.url
+  if (!fileUrl) {
+    console.error("UploadThing file missing url/ufsUrl:", uploadedFile)
+    return
+  }
+
+  const newFile = {
+    name: uploadedFile.name,
+    size: uploadedFile.size,
+    type: uploadedFile.type,
+    url: fileUrl, // now guaranteed
+  }
+
+  const id = await addFileMetadata(newFile)
+
+  setFiles((prevFiles) => [{ ...newFile, id, uploadDate: new Date() }, ...prevFiles])
+}
+
 
 
   const handleDeleteFile = async (id: string) => {
-    await deleteFileMetadata(id)
-    setFiles(files.filter((f) => f.id !== id))
-    if (selectedFile?.id === id) setSelectedFile(null)
+    try {
+      await deleteFileMetadata(id)
+      setFiles((prevFiles) => prevFiles.filter((f) => f.id !== id))
+      if (selectedFile?.id === id) setSelectedFile(null)
+    } catch (error) {
+      console.error("Error deleting file:", error)
+    }
   }
 
   return (

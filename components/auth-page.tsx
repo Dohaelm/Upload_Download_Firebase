@@ -51,7 +51,7 @@ export function AuthPage() {
       toast({
         title: "Erreur",
         description: error.message,
-        variant: "destructive",
+       
       })
     } finally {
       setIsLoading(false)
